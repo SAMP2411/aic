@@ -379,3 +379,53 @@ AIC_SKIP_BUILD=1 AIC_SKIP_PULL=1 AIC_GUI_DETACHED_WAIT=1 AIC_SUBMISSION_PROFILE=
 - The Docker images used by the verified local run were `my-solution:submission-act`, `my-solution:aic-eval-gui-hotfix`, and `ghcr.io/intrinsic-dev/aic/aic_eval:latest`.
 - If `scoring.yaml` exists and says `Cable insertion successful`, teardown warnings after scoring are simulator cleanup noise, not a failed run.
 - The copied repo on this machine does not include a `.git` directory, so file-change tracking must be done by path rather than `git status`.
+
+## NVIDIA GPU Run Commands
+
+Use this section only on a machine with an NVIDIA GPU, a working NVIDIA driver, and Docker GPU support. These commands enable GPU rendering for the visual Gazebo eval container through `docker/docker-compose.submission-gui-nvidia.yaml`.
+
+Windows PowerShell with WSL 2:
+
+```powershell
+wsl.exe -d Ubuntu-22.04 -u root -- bash -lc 'nvidia-smi'
+wsl.exe -d Ubuntu-22.04 -u root -- bash -lc 'cd /root/aic && ./scripts/check_nvidia_container_support.sh'
+```
+
+Run visual Gazebo with NVIDIA:
+
+```powershell
+wsl.exe -d Ubuntu-22.04 -u root -- bash -lc 'cd /root/aic && xhost +local:root && AIC_SKIP_BUILD=1 AIC_SKIP_PULL=1 AIC_SUBMISSION_PROFILE=tf_smoother AIC_ACT_MAX_WALL_SECONDS=900 ./scripts/run_submission_best_gui_nvidia_watch.sh gpu_visual'
+```
+
+While the visual run is active, verify that Gazebo is using NVIDIA instead of software rendering:
+
+```powershell
+wsl.exe -d Ubuntu-22.04 -u root -- bash -lc "docker exec aic-submission-cpu-eval-1 glxinfo -B | grep -E 'OpenGL vendor string|OpenGL renderer string'"
+```
+
+Native Ubuntu with NVIDIA:
+
+```bash
+cd ~/aic
+nvidia-smi
+./scripts/check_nvidia_container_support.sh
+xhost +local:root
+AIC_SKIP_BUILD=1 AIC_SKIP_PULL=1 AIC_SUBMISSION_PROFILE=tf_smoother AIC_ACT_MAX_WALL_SECONDS=900 ./scripts/run_submission_best_gui_nvidia_watch.sh gpu_visual
+```
+
+Renderer check from another Ubuntu terminal while the run is active:
+
+```bash
+docker exec aic-submission-cpu-eval-1 glxinfo -B | grep -E 'OpenGL vendor string|OpenGL renderer string'
+```
+
+Optional repeated NVIDIA visual validation:
+
+```bash
+cd ~/aic
+for i in $(seq -w 1 10); do
+  AIC_SKIP_BUILD=1 AIC_SKIP_PULL=1 AIC_SUBMISSION_PROFILE=tf_smoother AIC_ACT_MAX_WALL_SECONDS=900 ./scripts/run_submission_best_gui_nvidia_watch.sh "gpu_visual_10x_$i"
+done
+```
+
+Expected renderer lines on a correctly configured NVIDIA machine should name NVIDIA in the vendor or renderer string. If the renderer says `llvmpipe`, `softpipe`, or `Mesa` without NVIDIA, the run is using software rendering instead of the GPU.
