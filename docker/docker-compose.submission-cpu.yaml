@@ -1,0 +1,68 @@
+name: aic-submission-cpu
+services:
+  eval:
+    image: ghcr.io/intrinsic-dev/aic/aic_eval:latest
+    command: ${AIC_EVAL_COMMAND:-gazebo_gui:=false launch_rviz:=false ground_truth:=false start_aic_engine:=true shutdown_on_aic_engine_exit:=true aic_engine_config_file:=/aic_engine_config/sample_config.yaml model_discovery_timeout_seconds:=30 model_configure_timeout_seconds:=60}
+    networks:
+      - default
+    environment:
+      AIC_EVAL_PASSWD: CHANGE_IN_PROD
+      AIC_MODEL_PASSWD: CHANGE_IN_PROD
+      AIC_RESULTS_DIR: /aic_results
+      LIBGL_DRI3_DISABLE: "1"
+    volumes:
+      - ${AIC_RESULTS_HOST_DIR:-../runs/latest/results}:/aic_results
+      - ../aic_engine/config:/aic_engine_config:ro
+  model:
+    image: my-solution:submission-act
+    build:
+      dockerfile: docker/runact_submission_hotfix/Dockerfile
+      context: ..
+    networks:
+      - default
+    environment:
+      RMW_IMPLEMENTATION: rmw_zenoh_cpp
+      ZENOH_ROUTER_CHECK_ATTEMPTS: -1
+      AIC_ROUTER_ADDR: eval:7447
+      AIC_MODEL_PASSWD: CHANGE_IN_PROD
+      AIC_SUBMISSION_STRATEGY: ${AIC_SUBMISSION_STRATEGY:-vision_then_act}
+      AIC_USE_SCORING_TF: ${AIC_USE_SCORING_TF:-1}
+      AIC_ACT_FORCE_CPU: ${AIC_ACT_FORCE_CPU:-1}
+      AIC_ACT_LOCAL_ONLY: "1"
+      AIC_ACT_MAX_TASK_SECONDS: ${AIC_ACT_MAX_TASK_SECONDS:-30}
+      AIC_ACT_MAX_WALL_SECONDS: ${AIC_ACT_MAX_WALL_SECONDS:-0}
+      AIC_ACT_LOOP_HZ: ${AIC_ACT_LOOP_HZ:-4.0}
+      AIC_ACT_COMPLETION_GUARD_SECONDS: ${AIC_ACT_COMPLETION_GUARD_SECONDS:-1.0}
+      AIC_ACT_IMAGE_SCALE: ${AIC_ACT_IMAGE_SCALE:-0.25}
+      AIC_ACT_CACHE_DIR: /opt/huggingface
+      AIC_ACT_SNAPSHOT_DIR: /opt/huggingface/aic_act_policy
+      AIC_SCORING_TF_WAIT_SECONDS: ${AIC_SCORING_TF_WAIT_SECONDS:-10.0}
+      AIC_SCORING_TF_APPROACH_OFFSET: ${AIC_SCORING_TF_APPROACH_OFFSET:-0.14}
+      AIC_SCORING_TF_FINAL_OFFSET: ${AIC_SCORING_TF_FINAL_OFFSET:--0.018}
+      AIC_SCORING_TF_DESCEND_STEP: ${AIC_SCORING_TF_DESCEND_STEP:-0.0010}
+      AIC_SCORING_TF_SLEEP_SECONDS: ${AIC_SCORING_TF_SLEEP_SECONDS:-0.05}
+      AIC_SCORING_TF_INTERP_STEPS: ${AIC_SCORING_TF_INTERP_STEPS:-80}
+      AIC_SCORING_TF_I_GAIN: ${AIC_SCORING_TF_I_GAIN:-0.15}
+      AIC_SCORING_TF_MAX_INTEGRATOR: ${AIC_SCORING_TF_MAX_INTEGRATOR:-0.05}
+      AIC_SCORING_TF_HOLD_SECONDS: ${AIC_SCORING_TF_HOLD_SECONDS:-6.0}
+      AIC_SCORING_TF_HOLD_COMMAND_PERIOD: ${AIC_SCORING_TF_HOLD_COMMAND_PERIOD:-0.25}
+      AIC_SCORING_TF_COMPLETE_AFTER_HOLD: ${AIC_SCORING_TF_COMPLETE_AFTER_HOLD:-0}
+      AIC_SCORING_TF_SEARCH_ON_MISS: ${AIC_SCORING_TF_SEARCH_ON_MISS:-0}
+      AIC_SFP_PORT0_SIDE: ${AIC_SFP_PORT0_SIDE:-right}
+      AIC_VISUAL_ALIGNMENT_PX: ${AIC_VISUAL_ALIGNMENT_PX:-24.0}
+      AIC_VISUAL_DEADBAND_PX: ${AIC_VISUAL_DEADBAND_PX:-8.0}
+      AIC_VISUAL_LATERAL_GAIN: ${AIC_VISUAL_LATERAL_GAIN:-0.065}
+      AIC_VISUAL_PUSH_SPEED: ${AIC_VISUAL_PUSH_SPEED:-0.010}
+      AIC_VISUAL_BACKOFF_SPEED: ${AIC_VISUAL_BACKOFF_SPEED:-0.005}
+      AIC_VISUAL_MAX_SPEED: ${AIC_VISUAL_MAX_SPEED:-0.030}
+      AIC_VISUAL_FORCE_GUARD_NEWTONS: ${AIC_VISUAL_FORCE_GUARD_NEWTONS:-8.0}
+      AIC_VISUAL_PUSH_SETTLE_SECONDS: ${AIC_VISUAL_PUSH_SETTLE_SECONDS:-3.0}
+      AIC_VISUAL_SFP_PORT_GAP_PX: ${AIC_VISUAL_SFP_PORT_GAP_PX:-26.0}
+      AIC_VISUAL_SFP_PORT_ALIGN_X_PX: ${AIC_VISUAL_SFP_PORT_ALIGN_X_PX:-0.0}
+      AIC_VISUAL_TARGET_LOST_FRAMES: ${AIC_VISUAL_TARGET_LOST_FRAMES:-3}
+      TORCH_HOME: /opt/torch-cache
+    volumes:
+      - ${AIC_TORCH_CACHE_HOST_DIR:-../.cache/torch-cache}:/opt/torch-cache
+networks:
+  default:
+    internal: true

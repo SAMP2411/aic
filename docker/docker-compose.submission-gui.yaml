@@ -1,0 +1,25 @@
+services:
+  eval:
+    image: my-solution:aic-eval-gui-hotfix
+    build:
+      context: ..
+      dockerfile: docker/aic_eval_gui_hotfix/Dockerfile
+    command: ${AIC_EVAL_COMMAND:-gazebo_gui:=true launch_rviz:=false ground_truth:=false start_aic_engine:=true shutdown_on_aic_engine_exit:=true model_discovery_timeout_seconds:=30 model_configure_timeout_seconds:=60}
+    environment:
+      DISPLAY: ${DISPLAY}
+      XAUTHORITY: /tmp/.docker.xauth
+      QT_X11_NO_MITSHM: "1"
+      DRI_PRIME: ${AIC_EVAL_DRI_PRIME:-}
+      __NV_PRIME_RENDER_OFFLOAD: ${AIC_EVAL_NV_PRIME_RENDER_OFFLOAD:-}
+      __GLX_VENDOR_LIBRARY_NAME: ${AIC_EVAL_GLX_VENDOR_LIBRARY_NAME:-}
+      __VK_LAYER_NV_optimus: ${AIC_EVAL_VK_LAYER_NV_OPTIMUS:-}
+      LIBGL_ALWAYS_SOFTWARE: ${AIC_EVAL_SOFTWARE_RENDERING:-1}
+      MESA_LOADER_DRIVER_OVERRIDE: ${AIC_EVAL_MESA_DRIVER:-llvmpipe}
+      GALLIUM_DRIVER: ${AIC_EVAL_GALLIUM_DRIVER:-llvmpipe}
+      LP_NUM_THREADS: ${AIC_EVAL_LP_NUM_THREADS:-1}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${AIC_XAUTHORITY_HOST_FILE:?AIC_XAUTHORITY_HOST_FILE must be set}:/tmp/.docker.xauth:ro
+    devices:
+      - ${AIC_DRI_CARD_HOST_FILE:?AIC_DRI_CARD_HOST_FILE must be set}:/dev/dri/card0
+      - ${AIC_DRI_RENDER_HOST_FILE:?AIC_DRI_RENDER_HOST_FILE must be set}:/dev/dri/renderD128

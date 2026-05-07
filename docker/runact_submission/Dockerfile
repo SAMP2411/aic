@@ -1,0 +1,86 @@
+FROM docker.io/library/ros:kilted-ros-core AS build
+
+RUN apt update && apt install -y git && curl -fsSL https://pixi.sh/install.sh | bash
+ENV PATH="/root/.pixi/bin:$PATH"
+ENV HF_HOME="/opt/huggingface"
+ENV HF_HUB_DISABLE_TELEMETRY="1"
+ENV AIC_ACT_CACHE_DIR="/opt/huggingface"
+ENV AIC_ACT_LOCAL_ONLY="1"
+ENV AIC_ACT_SNAPSHOT_DIR="/opt/huggingface/aic_act_policy"
+ENV TORCH_HOME="/opt/torch-cache"
+
+COPY aic_example_policies /ws_aic/src/aic/aic_example_policies
+COPY aic_model /ws_aic/src/aic/aic_model
+COPY aic_interfaces /ws_aic/src/aic/aic_interfaces
+COPY aic_utils /ws_aic/src/aic/aic_utils
+COPY pixi.toml pixi.lock /ws_aic/src/aic/
+COPY pixi_env_setup.sh /ws_aic/src/aic/
+
+SHELL ["/bin/bash", "-c"]
+RUN --mount=type=cache,target=/root/.cache/rattler/cache --mount=type=cache,target=/ws_aic/src/aic/.pixi/build \
+    cd /ws_aic/src/aic && pixi install --locked
+
+RUN mkdir -p "$HF_HOME" "$TORCH_HOME" && \
+    cd /ws_aic/src/aic && \
+    pixi run --as-is python - <<'PY'
+from pathlib import Path
+
+from huggingface_hub import snapshot_download
+from torchvision.models import ResNet18_Weights, resnet18
+
+snapshot_path = Path(
+    snapshot_download(
+    repo_id="grkw/aic_act_policy",
+    allow_patterns=["config.json", "model.safetensors", "*.safetensors"],
+    cache_dir="/opt/huggingface",
+)
+)
+
+link_path = Path("/opt/huggingface/aic_act_policy")
+if link_path.is_symlink() or link_path.exists():
+    link_path.unlink()
+link_path.symlink_to(snapshot_path, target_is_directory=True)
+
+resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+print(f"ACT snapshot: {snapshot_path}")
+print(f"Stable link: {link_path}")
+PY
+
+WORKDIR /ws_aic/src/aic
+COPY --chmod=755 <<"EOF" /entrypoint.sh
+#!/bin/bash
+set -e
+
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+
+if [[ -z "$AIC_ROUTER_ADDR" ]]; then
+  echo "AIC_ROUTER_ADDR must be provided"
+  exit 1
+fi
+
+should_enable_acl() {
+  [[ "$AIC_ENABLE_ACL" == "true" || "$AIC_ENABLE_ACL" == "1" ]]
+}
+
+if should_enable_acl; then
+  if [[ ! (-n "$AIC_MODEL_PASSWD" ) ]]; then
+    echo "AIC_MODEL_PASSWD must be provided"
+    exit 1
+  fi
+  echo "model:$AIC_MODEL_PASSWD" >> /credentials.txt
+fi
+
+ZENOH_CONFIG_OVERRIDE='connect/endpoints=["tcp/'"$AIC_ROUTER_ADDR"'"]'
+ZENOH_CONFIG_OVERRIDE+=';transport/shared_memory/enabled=false'
+if should_enable_acl; then
+  ZENOH_CONFIG_OVERRIDE+=';transport/auth/usrpwd/user="model"'
+  ZENOH_CONFIG_OVERRIDE+=';transport/auth/usrpwd/password="'"$AIC_MODEL_PASSWD"'"'
+  ZENOH_CONFIG_OVERRIDE+=';transport/auth/usrpwd/dictionary_file="/credentials.txt"'
+fi
+export ZENOH_CONFIG_OVERRIDE
+echo "ZENOH_CONFIG_OVERRIDE=$ZENOH_CONFIG_OVERRIDE"
+exec pixi run --as-is ros2 run aic_model aic_model "$@"
+EOF
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["--ros-args", "-p", "policy:=aic_example_policies.ros.SubmissionACT", "-p", "use_sim_time:=true"]
